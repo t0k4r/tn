@@ -3,7 +3,6 @@ package tn
 import (
 	"log"
 	"tn/tn/golang"
-	"tn/tn/ziglang"
 )
 
 type Opt struct {
@@ -11,25 +10,20 @@ type Opt struct {
 	Update  bool
 }
 
-type TN interface {
-	Install()
-	Update()
-}
-
 type tn struct {
-	opt   Opt
-	tools []TN
+	opt     Opt
+	update  []func() error
+	install []func() error
 }
 
 func (t tn) Run() {
 	if t.opt.Install {
-		for _, tool := range t.tools {
-			tool.Install()
+		for _, installer := range t.install {
+			installer()
 		}
-	}
-	if t.opt.Update {
-		for _, tool := range t.tools {
-			tool.Update()
+	} else if t.opt.Update {
+		for _, updater := range t.update {
+			updater()
 		}
 	}
 }
@@ -38,8 +32,9 @@ func New(opt Opt) tn {
 	if !opt.Install && !opt.Update {
 		log.Fatal("nothing to do")
 	}
-	var tools []TN
-	tools = append(tools, ziglang.New())
-	tools = append(tools, golang.New())
-	return tn{opt, tools}
+	return tn{
+		opt:     opt,
+		update:  []func() error{golang.Update},
+		install: []func() error{golang.Install},
+	}
 }
