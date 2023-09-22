@@ -81,7 +81,13 @@ func (e *entry) extract() error {
 	if err != nil {
 		return err
 	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+
 	tr := tar.NewReader(gz)
+	prefix := fmt.Sprintf("%v/.tn/", home)
 	for {
 		header, err := tr.Next()
 		if err != nil {
@@ -93,23 +99,28 @@ func (e *entry) extract() error {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			err := os.Mkdir(header.Name, 0775)
+			err := os.Mkdir(prefix+header.Name, 0777)
 			if err != nil {
 				return err
 			}
 		case tar.TypeReg:
 			{
-				file, err := os.Create(header.Name)
+				file, err := os.Create(prefix + header.Name)
 				if err != nil {
 					return err
 				}
 				defer file.Close()
 
+				err = file.Chmod(0777)
+				if err != nil {
+					return err
+				}
 				_, err = io.Copy(file, tr)
 				if err != nil {
 					return err
 				}
 			}
+
 		default:
 			return fmt.Errorf("unknown tar type flag: %v", header.Typeflag)
 		}
