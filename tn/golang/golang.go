@@ -99,27 +99,42 @@ func (e *entry) extract() error {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			err := os.Mkdir(prefix+header.Name, 0777)
+			err := os.Mkdir(prefix+header.Name, os.FileMode(header.Mode))
 			if err != nil {
 				return err
 			}
 		case tar.TypeReg:
 			{
-				file, err := os.Create(prefix + header.Name)
+				f, err := os.OpenFile(prefix+header.Name, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
 				if err != nil {
 					return err
 				}
-				defer file.Close()
 
-				err = file.Chmod(0777)
-				if err != nil {
+				// copy over contents
+				if _, err := io.Copy(f, tr); err != nil {
 					return err
 				}
-				_, err = io.Copy(file, tr)
-				if err != nil {
-					return err
-				}
+
+				// manually close here after each file operation; defering would cause each file close
+				// to wait until all operations have completed.
+				f.Close()
 			}
+			// {
+			// 	file, err := os.Create(prefix + header.Name)
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// 	defer file.Close()
+
+			// 	err = file.Chmod(0777)
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// 	_, err = io.Copy(file, tr)
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// }
 
 		default:
 			return fmt.Errorf("unknown tar type flag: %v", header.Typeflag)
