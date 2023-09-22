@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -81,7 +82,38 @@ func (e *entry) extract() error {
 		return err
 	}
 	tr := tar.NewReader(gz)
-	_ = tr
+	for {
+		header, err := tr.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			} else {
+				return err
+			}
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			err := os.Mkdir(header.Name, 0775)
+			if err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			{
+				file, err := os.Create(header.Name)
+				if err != nil {
+					return err
+				}
+				defer file.Close()
+
+				_, err = io.Copy(file, tr)
+				if err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("unknown tar type flag: %v", header.Typeflag)
+		}
+	}
 	return nil
 }
 
