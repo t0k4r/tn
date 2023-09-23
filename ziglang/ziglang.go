@@ -2,12 +2,15 @@ package ziglang
 
 import (
 	"archive/tar"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/ulikunitz/xz"
@@ -37,6 +40,16 @@ func (e *entry) download() error {
 	_, err = e.file.Seek(0, 0)
 	return err
 
+}
+
+func (e *entry) valid() (bool, error) {
+	fmt.Println("Zig: validating checksum")
+	hash := sha256.New()
+	if _, err := io.Copy(hash, e.file); err != nil {
+		log.Fatal(err)
+	}
+	_, err := e.file.Seek(0, 0)
+	return fmt.Sprintf("%x", hash.Sum(nil)) == e.checksum, err
 }
 
 func (e *entry) extract() error {
@@ -98,7 +111,7 @@ func (e *entry) extract() error {
 }
 
 func getEntry() (*entry, error) {
-	fmt.Println("Zig: getting master")
+	fmt.Println("Zig: fetching master")
 	res, err := http.Get("https://ziglang.org/download/index.json")
 	if err != nil {
 		return nil, err
@@ -120,6 +133,16 @@ func getEntry() (*entry, error) {
 	return &entry, nil
 }
 
+func version() (string, error) {
+	fmt.Println("Zig: checking version")
+	cmd := exec.Command("zig", "version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out[:len(out)-1]), err
+}
+
 func Install() error {
 	entry, err := getEntry()
 	if err != nil {
@@ -129,13 +152,50 @@ func Install() error {
 	if err != nil {
 		return err
 	}
-	err = entry.extract()
+	valid, err := entry.valid()
 	if err != nil {
 		return err
 	}
+	if valid {
+		err = entry.extract()
+		if err != nil {
+			return err
+		}
+	} else {
+		fmt.Println("Zig: bad checksum")
+	}
 	return nil
 }
+
 func Update() error {
-	fmt.Println("zig update")
+	version, err := version()
+	if err != nil {
+		return err
+	}
+	entry, err := getEntry()
+	if err != nil {
+		return err
+	}
+	if entry.version != version {
+		fmt.Printf("Zig: version mismatch latest: %v, installed: %v\n", entry.version, version)
+		err = entry.download()
+		if err != nil {
+			return err
+		}
+		valid, err := entry.valid()
+		if err != nil {
+			return err
+		}
+		if valid {
+			err = entry.extract()
+			if err != nil {
+				return err
+			}
+		} else {
+			fmt.Println("Zig: bad checksum")
+		}
+	} else {
+		fmt.Printf("Zig: up to date: %v\n", version)
+	}
 	return nil
 }

@@ -25,7 +25,7 @@ type entry struct {
 }
 
 func getEntries() ([]entry, error) {
-	fmt.Println("Go: fetching go versions")
+	fmt.Println("Go: fetching versions")
 	var entries []entry
 	res, err := http.Get("https://go.dev/dl/")
 	if err != nil {
@@ -65,7 +65,7 @@ func (e *entry) download() error {
 	return err
 }
 func (e *entry) valid() (bool, error) {
-	fmt.Println("Go: validating go checksum")
+	fmt.Println("Go: validating checksum")
 	hash := sha256.New()
 	if _, err := io.Copy(hash, e.file); err != nil {
 		log.Fatal(err)
@@ -146,6 +146,8 @@ func install(entries []entry) error {
 				if err != nil {
 					return err
 				}
+			} else {
+				fmt.Println("Go: bad checksum")
 			}
 			break
 		}
