@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
-	"tn/golang"
+	"tn/ziglang"
 )
 
 type Opt struct {
@@ -38,8 +38,8 @@ func New(opt Opt) tn {
 	}
 	return tn{
 		opt:     opt,
-		update:  []func() error{golang.Update},
-		install: []func() error{golang.Install},
+		update:  []func() error{ /*golang.Update,*/ ziglang.Update},
+		install: []func() error{ /*golang.Install,*/ ziglang.Install},
 	}
 }
 
