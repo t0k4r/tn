@@ -23,11 +23,17 @@ type tn struct {
 func (t tn) Run() {
 	if t.opt.Install {
 		for _, installer := range t.install {
-			installer()
+			err := installer()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	} else if t.opt.Update {
 		for _, updater := range t.update {
-			updater()
+			err := updater()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 }

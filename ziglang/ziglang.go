@@ -24,7 +24,7 @@ type entry struct {
 }
 
 func (e *entry) download() error {
-	fmt.Printf("Zig: downlaoding %v\n", e.version)
+	fmt.Printf("Zig: downloading %v\n", e.version)
 	var err error
 	e.file, err = os.CreateTemp("", fmt.Sprintf("zig%v", e.version))
 	if err != nil {
@@ -65,6 +65,7 @@ func (e *entry) extract() error {
 		return err
 	}
 	prefix := fmt.Sprintf("%v/.tn/", home)
+	os.RemoveAll(prefix + "zig")
 	for {
 		header, err := tr.Next()
 		if err != nil {
