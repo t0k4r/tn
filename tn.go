@@ -1,11 +1,11 @@
-package tn
+package main
 
 import (
 	"fmt"
 	"log"
 	"os"
 	"strings"
-	"tn/tn/golang"
+	"tn/golang"
 )
 
 type Opt struct {

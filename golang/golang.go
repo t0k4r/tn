@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 
@@ -23,12 +24,12 @@ type entry struct {
 	file     *os.File
 }
 
-func getEntries() []entry {
+func getEntries() ([]entry, error) {
 	fmt.Println("Go: fetching go versions")
 	var entries []entry
 	res, err := http.Get("https://go.dev/dl/")
 	if err != nil {
-		log.Fatal(err)
+		return entries, err
 	}
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
@@ -43,13 +44,13 @@ func getEntries() []entry {
 			entries = append(entries, entry)
 		}
 	})
-	return entries
+	return entries, nil
 }
 
 func (e *entry) download() error {
 	fmt.Printf("Go: downloading %v\n", e.name)
 	var err error
-	e.file, err = os.Create(fmt.Sprintf("/tmp/%v", e.name))
+	e.file, err = os.CreateTemp("", e.name)
 	if err != nil {
 		return err
 	}
@@ -57,8 +58,7 @@ func (e *entry) download() error {
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(e.file, res.Body)
-	if err != nil {
+	if _, err = io.Copy(e.file, res.Body); err != nil {
 		return err
 	}
 	_, err = e.file.Seek(0, 0)
@@ -67,13 +67,11 @@ func (e *entry) download() error {
 func (e *entry) valid() (bool, error) {
 	fmt.Println("Go: validating go checksum")
 	hash := sha256.New()
-	_, err := io.Copy(hash, e.file)
-	if err != nil {
+	if _, err := io.Copy(hash, e.file); err != nil {
 		log.Fatal(err)
 	}
-	sum := fmt.Sprintf("%x", hash.Sum(nil))
-	_, err = e.file.Seek(0, 0)
-	return sum == e.checksum, err
+	_, err := e.file.Seek(0, 0)
+	return fmt.Sprintf("%x", hash.Sum(nil)) == e.checksum, err
 }
 func (e *entry) extract() error {
 	fmt.Println("Go: extracting")
@@ -85,9 +83,9 @@ func (e *entry) extract() error {
 	if err != nil {
 		return err
 	}
-
 	tr := tar.NewReader(gz)
 	prefix := fmt.Sprintf("%v/.tn/", home)
+	os.RemoveAll(prefix + "go")
 	for {
 		header, err := tr.Next()
 		if err != nil {
@@ -99,8 +97,7 @@ func (e *entry) extract() error {
 		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			err := os.Mkdir(prefix+header.Name, os.FileMode(header.Mode))
-			if err != nil {
+			if err := os.Mkdir(prefix+header.Name, os.FileMode(header.Mode)); err != nil {
 				return err
 			}
 		case tar.TypeReg:
@@ -109,32 +106,12 @@ func (e *entry) extract() error {
 				if err != nil {
 					return err
 				}
+				defer f.Close()
 
-				// copy over contents
 				if _, err := io.Copy(f, tr); err != nil {
 					return err
 				}
-
-				// manually close here after each file operation; defering would cause each file close
-				// to wait until all operations have completed.
-				f.Close()
 			}
-			// {
-			// 	file, err := os.Create(prefix + header.Name)
-			// 	if err != nil {
-			// 		return err
-			// 	}
-			// 	defer file.Close()
-
-			// 	err = file.Chmod(0777)
-			// 	if err != nil {
-			// 		return err
-			// 	}
-			// 	_, err = io.Copy(file, tr)
-			// 	if err != nil {
-			// 		return err
-			// 	}
-			// }
 
 		default:
 			return fmt.Errorf("unknown tar type flag: %v", header.Typeflag)
@@ -144,10 +121,18 @@ func (e *entry) extract() error {
 }
 
 func Install() error {
+	entries, err := getEntries()
+	if err != nil {
+		return err
+	}
+	return install(entries)
+}
+
+func install(entries []entry) error {
 	name := fmt.Sprintf("%v-%v", runtime.GOOS, runtime.GOARCH)
-	entries := getEntries()
 	for _, entry := range entries {
 		if strings.Contains(entry.name, name) {
+			defer entry.file.Close()
 			err := entry.download()
 			if err != nil {
 				return err
@@ -162,12 +147,36 @@ func Install() error {
 					return err
 				}
 			}
-			return nil
+			break
 		}
 	}
 	return nil
 }
+
+func version() (string, error) {
+	fmt.Println("Go: checking version")
+	cmd := exec.Command("go", "version")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.Split(string(out), " ")[2], err
+}
 func Update() error {
-	fmt.Println("go update")
+	ver, err := version()
+	if err != nil {
+		return err
+	}
+	entries, err := getEntries()
+	if err != nil {
+		return err
+	}
+	newVer := strings.Split(entries[0].name, ".src")[0]
+	if newVer != ver {
+		fmt.Printf("Go: version mismatch latest: %v, installed: %v\n", newVer, ver)
+		install(entries)
+	} else {
+		fmt.Printf("Go: up to date: %v\n", ver)
+	}
 	return nil
 }
