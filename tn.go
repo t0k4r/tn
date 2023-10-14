@@ -7,6 +7,8 @@ import (
 	"strings"
 	"tn/golang"
 	"tn/ziglang"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type Opt struct {
@@ -21,20 +23,19 @@ type tn struct {
 }
 
 func (t tn) Run() {
+	g := new(errgroup.Group)
 	if t.opt.Install {
 		for _, installer := range t.install {
-			err := installer()
-			if err != nil {
-				log.Fatal(err)
-			}
+			g.Go(installer)
 		}
 	} else if t.opt.Update {
 		for _, updater := range t.update {
-			err := updater()
-			if err != nil {
-				log.Fatal(err)
-			}
+			g.Go(updater)
 		}
+	}
+	err := g.Wait()
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -42,6 +43,9 @@ func New(opt Opt) tn {
 	setup()
 	if !opt.Install && !opt.Update {
 		log.Fatal("nothing to do")
+	}
+	if opt.Install && opt.Update {
+		log.Fatal("chose one")
 	}
 	return tn{
 		opt:     opt,
