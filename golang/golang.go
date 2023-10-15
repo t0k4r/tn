@@ -33,7 +33,7 @@ func getEntries() ([]entry, error) {
 	}
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		return entries, err
 	}
 	doc.Find(".downloadtable tr").Each(func(i int, s *goquery.Selection) {
 		var entry entry
@@ -47,35 +47,35 @@ func getEntries() ([]entry, error) {
 	return entries, nil
 }
 
-func (e *entry) download() error {
+func (e *entry) download() (*os.File, error) {
 	fmt.Printf("Go: downloading %v\n", e.name)
 	var err error
-	e.file, err = os.CreateTemp("", e.name)
+	file, err := os.CreateTemp("", e.name)
 	if err != nil {
-		return err
+		return file, err
 	}
 	res, err := http.Get(e.url)
 	if err != nil {
-		return err
+		return file, err
 	}
 	if _, err = io.Copy(e.file, res.Body); err != nil {
-		return err
+		return file, err
 	}
 	_, err = e.file.Seek(0, 0)
-	return err
+	return file, err
 }
-func (e *entry) valid() (bool, error) {
+func (e *entry) valid(file *os.File) (bool, error) {
 	fmt.Println("Go: validating checksum")
 	hash := sha256.New()
-	if _, err := io.Copy(hash, e.file); err != nil {
+	if _, err := io.Copy(hash, file); err != nil {
 		log.Fatal(err)
 	}
 	_, err := e.file.Seek(0, 0)
 	return fmt.Sprintf("%x", hash.Sum(nil)) == e.checksum, err
 }
-func (e *entry) extract() error {
+func extract(file *os.File) error {
 	fmt.Println("Go: extracting")
-	gz, err := gzip.NewReader(e.file)
+	gz, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
@@ -132,25 +132,23 @@ func install(entries []entry) error {
 	name := fmt.Sprintf("%v-%v", runtime.GOOS, runtime.GOARCH)
 	for _, entry := range entries {
 		if strings.Contains(entry.name, name) {
-			defer entry.file.Close()
-			err := entry.download()
+			file, err := entry.download()
 			if err != nil {
 				return err
 			}
-			valid, err := entry.valid()
-			if err != nil {
-				return err
-			}
-			if valid {
-				err := entry.extract()
+			defer file.Close()
+
+			if valid, err := entry.valid(file); err != nil || !valid {
 				if err != nil {
 					return err
 				}
-			} else {
 				fmt.Println("Go: bad checksum")
+			} else {
+				return extract(file)
 			}
 			break
 		}
+
 	}
 	return nil
 }
